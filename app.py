@@ -1,6 +1,6 @@
 import os
 from flask import Flask, request, jsonify
-from openai import OpenAI
+from openai import OpenAI, api_client
 from dotenv import load_dotenv
 from flask_cors import CORS
 import json
@@ -12,15 +12,32 @@ app = Flask(__name__)
 # تمكين CORS للسماح بالطلبات من أي مصدر
 CORS(app)
 
-# إعداد عميل OpenAI
-# سيقرأ المفتاح تلقائيًا من متغير البيئة OPENAI_API_KEY
-# الذي ستقوم بتعيينه في خدمة الاستضافة (Render)
+# --- بداية الكود المعدل ---
+# إعداد عميل OpenAI مع معالجة خطأ 'proxies'
 try:
+    # الطريقة القياسية
     client = OpenAI()
+except TypeError as e:
+    # هذا الجزء سيعمل إذا واجهنا خطأ الوسيط 'proxies' في بيئة مثل Render
+    if 'proxies' in str(e):
+        print("Ignoring 'proxies' argument for OpenAI client initialization.")
+        # نقوم بتهيئة العميل يدوياً بدون تمرير الوسائط غير المتوقعة
+        # هذا يتطلب استيراد http_client من openai
+        from openai._base_client import DefaultHttpxClient
+        
+        client = OpenAI(
+            api_key=os.environ.get("OPENAI_API_KEY" ),
+            http_client=DefaultHttpxClient(proxies={} ) # تمرير بروكسي فارغ
+        )
+    else:
+        # إذا كان الخطأ من نوع آخر، أظهره
+        raise e
 except Exception as e:
     # هذا سيساعد في تشخيص المشكلة إذا لم يتم تعيين مفتاح API
     print(f"Error initializing OpenAI client: {e}")
     client = None
+# --- نهاية الكود المعدل ---
+
 
 @app.route('/')
 def home():
@@ -34,7 +51,7 @@ def generate_questions_api():
     API endpoint to generate quiz questions from text using an LLM.
     """
     if not client:
-        return jsonify({"error": "OpenAI client not initialized. Check API key."}), 500
+        return jsonify({"error": "OpenAI client not initialized. Check API key or server logs."}), 500
         
     try:
         data = request.json
@@ -74,10 +91,8 @@ def generate_questions_api():
         response_content = response.choices[0].message.content
         
         try:
-            # The model supporting json_object mode should return a valid JSON string.
             response_data = json.loads(response_content)
             
-            # Ensure the response has the "questions" key and it's a list
             if "questions" not in response_data or not isinstance(response_data["questions"], list):
                 raise ValueError("The 'questions' key is missing or is not a list in the AI response.")
 
@@ -93,6 +108,4 @@ def generate_questions_api():
         return jsonify({"error": "An internal server error occurred.", "details": str(e)}), 500
 
 if __name__ == '__main__':
-    # For local development, you can run this.
-    # For production on Render, gunicorn will be used.
     app.run(host='0.0.0.0', port=5000, debug=True)
