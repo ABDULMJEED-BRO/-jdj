@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>مولد الاختبارات الذكي من PDF</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background-color: #f4f7f9;
+        color: #333;
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+    }
+    .container {
+        max-width: 800px;
+        width: 100%;
+        background: #fff;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08 );
+        transition: all 0.3s ease;
+    }
+    h2 {
+        text-align: center;
+        color: #2c3e50;
+        margin-bottom: 25px;
+    }
+    input[type="file"] {
+        display: block;
+        width: calc(100% - 24px);
+        padding: 12px;
+        margin: 15px 0;
+        border: 2px dashed #bdc3c7;
+        border-radius: 8px;
+        background-color: #ecf0f1;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    input[type="file"]:hover {
+        border-color: #3498db;
+        background-color: #fff;
+    }
+    button {
+        display: block;
+        width: 100%;
+        padding: 14px;
+        font-size: 16px;
+        font-weight: bold;
+        color: #fff;
+        background-color: #3498db;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+    button:disabled {
+        background-color: #95a5a6;
+        cursor: not-allowed;
+    }
+    button:hover:not(:disabled) {
+        background-color: #2980b9;
+    }
+    .progress-container {
+        margin-top: 20px;
+    }
+    .progress {
+        width: 100%;
+        background: #ecf0f1;
+        height: 25px;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .progress-bar {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #3498db, #2980b9);
+        transition: width 0.4s ease;
+        text-align: center;
+        line-height: 25px;
+        color: white;
+        font-weight: bold;
+    }
+    .status-text {
+        text-align: center;
+        margin-top: 8px;
+        color: #7f8c8d;
+        font-style: italic;
+    }
+    .hidden { display: none; }
+    #quiz h3 {
+        color: #2c3e50;
+        margin-bottom: 15px;
+    }
+    .option {
+        display: block;
+        background: #f8f9fa;
+        padding: 12px;
+        margin: 8px 0;
+        border-radius: 8px;
+        border: 1px solid #dfe6e9;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .option:hover {
+        background: #e9ecef;
+        border-color: #3498db;
+    }
+    .option.selected {
+        background-color: #d1e7fd;
+        border-color: #0d6efd;
+    }
+    #result h3 {
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 10px;
+        margin-top: 25px;
+    }
+    .result-item {
+        background: #f8f9fa;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        border-left: 5px solid;
+    }
+    .result-item.correct { border-color: #2ecc71; }
+    .result-item.wrong { border-color: #e74c3c; }
+    .result-item p { margin: 5px 0; }
+    .correct-answer { color: #27ae60; font-weight: bold; }
+    .user-answer { color: #c0392b; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h2>مولد الاختبارات الذكي من PDF</h2>
+    <p>ارفع ملف PDF، وسيقوم الذكاء الاصطناعي باستخراج الأسئلة وإنشاء اختبار لك.</p>
+
+    <input type="file" id="pdfInput" accept="application/pdf">
+    <button id="extractBtn" onclick="loadPDF()">استخراج الأسئلة وإنشاء الاختبار</button>
+
+    <div class="progress-container hidden" id="progressBox">
+        <div class="progress">
+            <div class="progress-bar" id="progressBar">0%</div>
+        </div>
+        <p class="status-text" id="statusText"></p>
+    </div>
+
+    <hr class="hidden" id="separator">
+
+    <div id="quiz" class="hidden"></div>
+    <div id="result" class="hidden"></div>
+</div>
+
+<script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let questions = [];
+    let currentQuestionIndex = 0;
+    let score = 0;
+    
+    //  <<<--- الخطوة الأخيرة: قم بتغيير هذا الرابط ---<<<
+    const API_URL = 'https://YOUR_BACKEND_URL_HERE.onrender.com/generate-questions';
+    //  <<<------------------------------------------<<<
+
+    const extractBtn = document.getElementById('extractBtn' );
+    const pdfInput = document.getElementById('pdfInput');
+    const progressBox = document.getElementById('progressBox');
+    const progressBar = document.getElementById('progressBar');
+    const statusText = document.getElementById('statusText');
+    const quizDiv = document.getElementById('quiz');
+    const resultDiv = document.getElementById('result');
+    const separator = document.getElementById('separator');
+
+    async function loadPDF() {
+        const file = pdfInput.files[0];
+        if (!file) {
+            alert("الرجاء اختيار ملف PDF أولاً.");
+            return;
+        }
+        
+        if (API_URL.includes('YOUR_BACKEND_URL_HERE')) {
+            alert("خطأ في الإعداد: الرجاء تحديث رابط الواجهة الخلفية (API_URL) في ملف index.html أولاً.");
+            return;
+        }
+
+        resetAll();
+        extractBtn.disabled = true;
+        extractBtn.innerText = "جاري المعالجة...";
+        progressBox.classList.remove('hidden');
+        separator.classList.remove('hidden');
+
+        try {
+            statusText.innerText = "جاري قراءة ملف PDF...";
+            const buffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+            let fullText = '';
+
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const textContent = await page.getTextContent();
+                textContent.items.forEach(item => {
+                    fullText += item.str + ' ';
+                });
+                fullText += '\n';
+                updateProgress(pageNum, pdf.numPages, "جاري استخراج النص من الصفحات...");
+                await new Promise(r => setTimeout(r, 5));
+            }
+
+            statusText.innerText = "جاري تحليل النص وإنشاء الأسئلة بواسطة الذكاء الاصطناعي...";
+            progressBar.style.width = '100%';
+            progressBar.innerText = 'AI';
+
+            const generatedQuestions = await generateQuestionsWithAI(fullText);
+            if (!generatedQuestions || generatedQuestions.length === 0) {
+                throw new Error("لم يتمكن الذكاء الاصطناعي من العثور على أسئلة في هذا الملف.");
+            }
+            questions = generatedQuestions.map(q => ({ ...q, userAnswer: null }));
+
+            progressBox.classList.add('hidden');
+            startQuiz();
+
+        } catch (error) {
+            console.error("Error:", error);
+            statusText.innerText = `حدث خطأ: ${error.message}`;
+            alert(`فشل في معالجة الملف: ${error.message}`);
+            resetAll();
+        } finally {
+            extractBtn.disabled = false;
+            extractBtn.innerText = "استخراج الأسئلة وإنشاء الاختبار";
+        }
+    }
+
+    async function generateQuestionsWithAI(text) {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `خطأ في الخادم: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    function updateProgress(current, total, status) {
+        const percentage = Math.floor((current / total) * 100);
+        progressBar.style.width = percentage + '%';
+        progressBar.innerText = percentage + '%';
+        statusText.innerText = status;
+    }
+
+    function startQuiz() {
+        quizDiv.classList.remove('hidden');
+        showQuestion();
+    }
+
+    function showQuestion() {
+        if (currentQuestionIndex >= questions.length) {
+            showResult();
+            return;
+        }
+
+        const q = questions[currentQuestionIndex];
+        quizDiv.innerHTML = `
+            <h3>السؤال ${currentQuestionIndex + 1} من ${questions.length}</h3>
+            <p>${q.question}</p>
+            <div>
+                ${q.options.map((opt, index) => `
+                    <label class="option">
+                        <input type="radio" name="answer" value="${opt}" onchange="selectOption(this)">
+                        ${opt}
+                    </label>
+                `).join('')}
+            </div>
+            <button onclick="submitAnswer()" style="margin-top: 20px;">التالي</button>
+        `;
+    }
+    
+    function selectOption(radio) {
+        document.querySelectorAll('.option').forEach(label => label.classList.remove('selected'));
+        if (radio.checked) {
+            radio.parentElement.classList.add('selected');
+        }
+    }
+
+    function submitAnswer() {
+        const selectedOption = document.querySelector('input[name="answer"]:checked');
+        if (!selectedOption) {
+            alert("الرجاء اختيار إجابة.");
+            return;
+        }
+
+        const userAnswer = selectedOption.value;
+        questions[currentQuestionIndex].userAnswer = userAnswer;
+
+        if (userAnswer === questions[currentQuestionIndex].answer) {
+            score++;
+        }
+
+        currentQuestionIndex++;
+        showQuestion();
+    }
+
+    function showResult() {
+        quizDiv.classList.add('hidden');
+        resultDiv.classList.remove('hidden');
+
+        const percentage = Math.round((score / questions.length) * 100);
+        let resultHTML = `
+            <h2>انتهى الاختبار!</h2>
+            <h3>نتيجتك: ${score} من ${questions.length} (${percentage}%)</h3>
+        `;
+
+        const wrongQuestions = questions.filter(q => q.userAnswer !== q.answer);
+
+        if (wrongQuestions.length > 0) {
+            resultHTML += '<h3>الأسئلة الخاطئة:</h3>';
+            wrongQuestions.forEach(q => {
+                resultHTML += `
+                    <div class="result-item wrong">
+                        <p><strong>السؤال:</strong> ${q.question}</p>
+                        <p class="user-answer"><strong>إجابتك:</strong> ${q.userAnswer || 'لم تجب'}</p>
+                        <p class="correct-answer"><strong>الإجابة الصحيحة:</strong> ${q.answer}</p>
+                    </div>
+                `;
+            });
+        } else {
+             resultHTML += `
+                <div class="result-item correct">
+                    <p><strong>رائع! لقد أجبت على جميع الأسئلة بشكل صحيح.</strong></p>
+                </div>
+            `;
+        }
+        
+        resultHTML += '<button onclick="location.reload()" style="margin-top:10px; background-color: #7f8c8d;">البدء من جديد بملف آخر</button>';
+
+        resultDiv.innerHTML = resultHTML;
+    }
+
+    function resetAll() {
+        questions = [];
+        currentQuestionIndex = 0;
+        score = 0;
+        
+        quizDiv.classList.add('hidden');
+        resultDiv.classList.add('hidden');
+        progressBox.classList.add('hidden');
+        separator.classList.add('hidden');
+        
+        progressBar.style.width = '0%';
+        progressBar.innerText = '0%';
+        statusText.innerText = '';
+        pdfInput.value = '';
+    }
+</script>
+
+</body>
+</html>
