@@ -162,9 +162,9 @@
     let currentQuestionIndex = 0;
     let score = 0;
     
-    //  <<<--- الخطوة الأخيرة: قم بتغيير هذا الرابط ---<<<
-    const API_URL = 'https://YOUR_BACKEND_URL_HERE.onrender.com/generate-questions';
-    //  <<<------------------------------------------<<<
+    // --- تم تحديث هذا الرابط ---
+    const API_URL = 'https://jdj-d6mm.onrender.com/generate-questions';
+    // ---------------------------
 
     const extractBtn = document.getElementById('extractBtn' );
     const pdfInput = document.getElementById('pdfInput');
@@ -179,11 +179,6 @@
         const file = pdfInput.files[0];
         if (!file) {
             alert("الرجاء اختيار ملف PDF أولاً.");
-            return;
-        }
-        
-        if (API_URL.includes('YOUR_BACKEND_URL_HERE')) {
-            alert("خطأ في الإعداد: الرجاء تحديث رابط الواجهة الخلفية (API_URL) في ملف index.html أولاً.");
             return;
         }
 
@@ -206,17 +201,17 @@
                     fullText += item.str + ' ';
                 });
                 fullText += '\n';
-                updateProgress(pageNum, pdf.numPages, "جاري استخراج النص من الصفحات...");
+                updateProgress(pageNum, pdf.numPages, `جاري استخراج النص من الصفحة ${pageNum}...`);
                 await new Promise(r => setTimeout(r, 5));
             }
 
-            statusText.innerText = "جاري تحليل النص وإنشاء الأسئلة بواسطة الذكاء الاصطناعي...";
+            statusText.innerText = "جاري تحليل النص وإنشاء الأسئلة بواسطة الذكاء الاصطناعي... قد يستغرق هذا بعض الوقت.";
             progressBar.style.width = '100%';
             progressBar.innerText = 'AI';
 
             const generatedQuestions = await generateQuestionsWithAI(fullText);
             if (!generatedQuestions || generatedQuestions.length === 0) {
-                throw new Error("لم يتمكن الذكاء الاصطناعي من العثور على أسئلة في هذا الملف.");
+                throw new Error("لم يتمكن الذكاء الاصطناعي من العثور على أسئلة في هذا الملف. حاول مرة أخرى أو جرب ملفًا آخر.");
             }
             questions = generatedQuestions.map(q => ({ ...q, userAnswer: null }));
 
@@ -242,8 +237,8 @@
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `خطأ في الخادم: ${response.statusText}`);
+            const errorData = await response.json().catch(() => ({ error: `خطأ في الخادم برمز الحالة: ${response.status}` }));
+            throw new Error(errorData.error || `خطأ غير معروف من الخادم.`);
         }
         return await response.json();
     }
